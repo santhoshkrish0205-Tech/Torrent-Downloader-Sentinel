@@ -23,6 +23,36 @@ const portPromise = new Promise<number>((resolve, reject) => {
   portReject = reject;
 });
 
+export interface EngineStatus {
+  running: boolean;
+  port: number | null;
+  error: string | null;
+  resolvedPath: string | null;
+}
+
+let engineStatus: EngineStatus = {
+  running: false,
+  port: null,
+  error: null,
+  resolvedPath: null,
+};
+
+export function getEngineStatus(): EngineStatus {
+  return { ...engineStatus };
+}
+
+let logStream: fs.WriteStream | null = null;
+function writeToEngineLog(text: string): void {
+  try {
+    if (!logStream) {
+      const logDir = path.join(app.getPath("userData"), "logs");
+      fs.mkdirSync(logDir, { recursive: true });
+      logStream = fs.createWriteStream(path.join(logDir, "engine.log"), { flags: "a" });
+    }
+    logStream.write(`[${new Date().toISOString()}] ${text}\n`);
+  } catch {}
+}
+
 export function getEnginePort(): Promise<number> {
   return portPromise;
 }
@@ -30,8 +60,10 @@ export function getEnginePort(): Promise<number> {
 export function startEngine(): void {
   const resolved = resolveEngineCommand();
   if (!resolved) {
-    const errMsg = "[EngineManager] Torrent engine executable not found. Running in UI preview mode.";
-    console.warn(errMsg);
+    const errMsg = "Torrent engine executable (engine.exe) not found. Packaged build is missing engine bundle. Install the full release (~195 MB) to run the torrent engine.";
+    console.warn(`[EngineManager] ${errMsg}`);
+    writeToEngineLog(`[ERROR] ${errMsg}`);
+    engineStatus.error = errMsg;
     if (portReject) {
       portReject(new Error(errMsg));
     }
@@ -39,7 +71,9 @@ export function startEngine(): void {
   }
 
   const { cmd, args, opts } = resolved;
+  engineStatus.resolvedPath = cmd;
   console.log("[EngineManager] Starting engine:", cmd, args.join(" "));
+  writeToEngineLog(`[INFO] Starting engine: ${cmd} ${args.join(" ")}`);
 
   try {
     engineProcess = spawn(cmd, args, {
@@ -47,6 +81,7 @@ export function startEngine(): void {
       windowsHide: true,
       env: {
         ...process.env,
+        SENTINEL_ENGINE_PORT: "54321",
         SENTINEL_ENGINE_TOKEN: ENGINE_TOKEN,
         SENTINEL_APP_DATA: app.getPath("userData"),
       },
@@ -56,6 +91,9 @@ export function startEngine(): void {
     // Handle spawn-level failures (e.g. ENOENT, EACCES) to prevent uncaught main process crashes
     engineProcess.on("error", (err) => {
       console.error("[EngineManager] Subprocess spawn error:", err.message);
+      writeToEngineLog(`[ERROR] Subprocess spawn error: ${err.message}`);
+      engineStatus.running = false;
+      engineStatus.error = `Failed to launch engine binary: ${err.message}`;
       engineProcess = null;
       if (portReject && enginePort === null) {
         portReject(err);
@@ -65,9 +103,13 @@ export function startEngine(): void {
     // Read port from stdout
     engineProcess.stdout?.on("data", (chunk: Buffer) => {
       const text = chunk.toString();
+      writeToEngineLog(`[STDOUT] ${text.trimEnd()}`);
       const match = text.match(/SENTINEL_ENGINE_PORT:(\d+)/);
       if (match && portResolve) {
         enginePort = parseInt(match[1], 10);
+        engineStatus.running = true;
+        engineStatus.port = enginePort;
+        engineStatus.error = null;
         console.log("[EngineManager] Engine port discovered:", enginePort);
         portResolve(enginePort);
       }
@@ -75,11 +117,18 @@ export function startEngine(): void {
     });
 
     engineProcess.stderr?.on("data", (chunk: Buffer) => {
-      if (isDev) process.stderr.write(`[ENGINE ERR] ${chunk.toString()}`);
+      const text = chunk.toString();
+      writeToEngineLog(`[STDERR] ${text.trimEnd()}`);
+      if (isDev) process.stderr.write(`[ENGINE ERR] ${text}`);
     });
 
     engineProcess.on("exit", (code, signal) => {
       console.warn("[EngineManager] Engine exited:", code, signal);
+      writeToEngineLog(`[EXIT] Engine process exited with code ${code}, signal ${signal}`);
+      engineStatus.running = false;
+      if (code !== 0 && code !== null) {
+        engineStatus.error = `Engine process exited unexpectedly with code ${code}. Check engine.log for details.`;
+      }
       engineProcess = null;
       if (portReject && enginePort === null) {
         portReject(new Error(`Engine exited before reporting port (code=${code})`));
@@ -89,11 +138,16 @@ export function startEngine(): void {
     // Timeout if engine never reports port
     setTimeout(() => {
       if (enginePort === null && portReject) {
-        portReject(new Error("Engine port discovery timed out after 15s"));
+        const timeoutErr = new Error("Engine port discovery timed out after 15s");
+        engineStatus.error = timeoutErr.message;
+        writeToEngineLog(`[ERROR] ${timeoutErr.message}`);
+        portReject(timeoutErr);
       }
     }, 15_000);
   } catch (err: any) {
     console.error("[EngineManager] Unexpected exception while spawning engine:", err);
+    engineStatus.error = `Exception launching engine: ${err.message || err}`;
+    writeToEngineLog(`[ERROR] Exception spawning engine: ${err.message || err}`);
     if (portReject && enginePort === null) {
       portReject(err);
     }

@@ -6,15 +6,16 @@
 import { ipcMain, dialog, shell, BrowserWindow } from "electron";
 import path from "path";
 import fs from "fs";
-import { getEnginePort, ENGINE_TOKEN } from "./engine-manager";
+import { getEnginePort, ENGINE_TOKEN, getEngineStatus } from "./engine-manager";
 
 const MAGNET_RE = /^magnet:\?xt=urn:[a-z0-9]+:[a-z0-9]{32,40}/i;
 
 export function registerIpcHandlers(mainWindow: BrowserWindow): void {
 
   // ── Engine connectivity ──────────────────────────────────────────────────
-  ipcMain.handle("engine:getPort",  () => getEnginePort());
-  ipcMain.handle("engine:getToken", () => ENGINE_TOKEN);
+  ipcMain.handle("engine:getPort",   () => getEnginePort());
+  ipcMain.handle("engine:getToken",  () => ENGINE_TOKEN);
+  ipcMain.handle("engine:getStatus", () => getEngineStatus());
 
   // ── Torrent operations ───────────────────────────────────────────────────
   ipcMain.handle("torrent:addMagnet", async (_e, uri: unknown, savePath: unknown) => {

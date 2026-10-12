@@ -8,8 +8,9 @@ import { contextBridge, ipcRenderer } from "electron";
 
 contextBridge.exposeInMainWorld("sentinelAPI", {
   // ── Engine connectivity ────────────────────────────────────────────────
-  getEnginePort:  () => ipcRenderer.invoke("engine:getPort"),
-  getEngineToken: () => ipcRenderer.invoke("engine:getToken"),
+  getEnginePort:   () => ipcRenderer.invoke("engine:getPort"),
+  getEngineToken:  () => ipcRenderer.invoke("engine:getToken"),
+  getEngineStatus: () => ipcRenderer.invoke("engine:getStatus"),
 
   // ── Torrent operations ─────────────────────────────────────────────────
   addMagnet:      (uri: string, savePath?: string) =>

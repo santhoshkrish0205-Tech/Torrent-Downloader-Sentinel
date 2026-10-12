@@ -22,6 +22,7 @@ export const App: React.FC = () => {
   const setAddModalOpen = useTorrentStore((state) => state.setAddModalOpen);
   const torrents = useTorrentStore((state) => state.torrents);
   const selectedHash = useTorrentStore((state) => state.selectedHash);
+  const engineError = useTorrentStore((state) => state.engineError);
 
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [detailsHeight, setDetailsHeight] = useState(240);
@@ -143,6 +144,30 @@ export const App: React.FC = () => {
         <Sidebar />
 
         <main className="workspace">
+          {engineError && (
+            <div
+              id="engine-offline-banner"
+              style={{
+                backgroundColor: "rgba(239, 68, 68, 0.12)",
+                borderBottom: "1px solid rgba(239, 68, 68, 0.3)",
+                padding: "10px 16px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                color: "#fca5a5",
+                fontSize: "13px",
+                lineHeight: "1.4",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ fontSize: "16px" }}>⚠️</span>
+                <div>
+                  <strong>Torrent Engine Offline:</strong> {engineError}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="toolbar" id="toolbar">
             <div className="toolbar-left">
               <div className="search-box">

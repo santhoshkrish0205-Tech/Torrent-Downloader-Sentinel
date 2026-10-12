@@ -16,6 +16,14 @@ class EngineApiClient {
         this.port = await window.sentinelAPI.getEnginePort();
       } catch (err) {
         console.warn("[ApiClient] Could not get port from Electron, falling back to 54321:", err);
+        if (window.sentinelAPI?.getEngineStatus) {
+          try {
+            const status = await window.sentinelAPI.getEngineStatus();
+            if (status?.error) {
+              useTorrentStore.getState().setEngineError(status.error);
+            }
+          } catch {}
+        }
       }
     } else if (typeof window !== "undefined" && window.location) {
       // Running as a web application in browser!
@@ -23,6 +31,15 @@ class EngineApiClient {
       if (window.location.port && window.location.port !== "5173") {
         this.port = parseInt(window.location.port, 10);
       }
+    }
+
+    if (window.sentinelAPI?.getEngineStatus) {
+      try {
+        const status = await window.sentinelAPI.getEngineStatus();
+        if (status?.error) {
+          useTorrentStore.getState().setEngineError(status.error);
+        }
+      } catch {}
     }
 
     if (window.sentinelAPI?.getEngineToken) {
@@ -52,6 +69,7 @@ class EngineApiClient {
       this.ws.onopen = () => {
         console.log(`[ApiClient] Connected to engine WebSocket at ${wsUrl}`);
         useTorrentStore.getState().setConnected(true);
+        useTorrentStore.getState().setEngineError(null);
       };
 
       this.ws.onmessage = (event) => {
@@ -87,10 +105,23 @@ class EngineApiClient {
 
   private scheduleReconnect() {
     if (this.reconnectTimer) return;
-    this.reconnectTimer = window.setTimeout(() => {
+    const hasError = Boolean(useTorrentStore.getState().engineError);
+    const delay = hasError ? 8000 : 2500;
+    this.reconnectTimer = window.setTimeout(async () => {
       this.reconnectTimer = null;
+      if (window.sentinelAPI?.getEngineStatus) {
+        try {
+          const status = await window.sentinelAPI.getEngineStatus();
+          if (status?.error) {
+            useTorrentStore.getState().setEngineError(status.error);
+          } else if (status?.running) {
+            useTorrentStore.getState().setEngineError(null);
+            if (status.port) this.port = status.port;
+          }
+        } catch {}
+      }
       this.connectWs();
-    }, 2500);
+    }, delay);
   }
 
   private getBaseUrl(): string {

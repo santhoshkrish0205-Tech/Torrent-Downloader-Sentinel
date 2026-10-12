@@ -13,8 +13,8 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "electron:dev": "node scripts/dev-electron.js",
     "electron:build": "npm run package:win",
-    "package:linux": "npm run build && node -e \"require('fs').mkdirSync('engine/dist/engine',{recursive:true})\" && electron-builder --linux",
-    "package:win": "npm run build && node -e \"require('fs').mkdirSync('engine/dist/engine',{recursive:true})\" && electron-builder --win",
+    "package:linux": "npm run build && node scripts/check-engine.js && electron-builder --linux --publish never",
+    "package:win": "npm run build && node scripts/check-engine.js --win && electron-builder --win --publish never",
     "lint": "cd renderer && npm run lint"
   },
   "devDependencies": {

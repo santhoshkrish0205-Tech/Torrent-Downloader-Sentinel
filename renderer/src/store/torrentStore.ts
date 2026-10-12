@@ -21,6 +21,7 @@ interface TorrentStoreState {
   isAddModalOpen: boolean;
   isSettingsModalOpen: boolean;
   connected: boolean;
+  engineError: string | null;
   settings: GlobalSettings;
 
   // Actions
@@ -35,6 +36,7 @@ interface TorrentStoreState {
   setAddModalOpen: (open: boolean) => void;
   setSettingsModalOpen: (open: boolean) => void;
   setConnected: (connected: boolean) => void;
+  setEngineError: (error: string | null) => void;
   setSettings: (settings: Partial<GlobalSettings>) => void;
 }
 
@@ -68,6 +70,7 @@ export const useTorrentStore = create<TorrentStoreState>((set) => ({
   isAddModalOpen: false,
   isSettingsModalOpen: false,
   connected: false,
+  engineError: null,
   settings: DEFAULT_SETTINGS,
 
   setTorrents: (torrents) =>
@@ -102,6 +105,7 @@ export const useTorrentStore = create<TorrentStoreState>((set) => ({
   setAddModalOpen: (isAddModalOpen) => set({ isAddModalOpen }),
   setSettingsModalOpen: (isSettingsModalOpen) => set({ isSettingsModalOpen }),
   setConnected: (connected) => set({ connected }),
+  setEngineError: (engineError) => set({ engineError }),
   setSettings: (newSettings) =>
     set((state) => ({ settings: { ...state.settings, ...newSettings } })),
 }));

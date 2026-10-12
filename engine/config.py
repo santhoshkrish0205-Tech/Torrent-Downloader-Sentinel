@@ -12,16 +12,29 @@ from pathlib import Path
 DEV_MODE: bool = "--dev" in sys.argv
 
 # ── Port selection ────────────────────────────────────────────────────────────
+def _is_port_free(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind(("127.0.0.1", port))
+            return True
+        except OSError:
+            return False
+
 def _find_free_port() -> int:
     """Bind to port 0 and let the OS assign a free port, then release it."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
 
-# In dev mode allow a stable port for easier debugging.
-ENGINE_PORT: int = int(os.environ.get("SENTINEL_ENGINE_PORT", 0)) or (
-    54321 if DEV_MODE else _find_free_port()
-)
+def _determine_port() -> int:
+    env_port = int(os.environ.get("SENTINEL_ENGINE_PORT", 0))
+    if env_port > 0 and _is_port_free(env_port):
+        return env_port
+    if _is_port_free(54321):
+        return 54321
+    return _find_free_port()
+
+ENGINE_PORT: int = _determine_port()
 ENGINE_HOST: str = "127.0.0.1"
 
 # Shared secret token sent in X-Sentinel-Token header.

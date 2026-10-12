@@ -1,7 +1,14 @@
-// renderer/src/types/electron.d.ts
+export interface EngineStatusInfo {
+  running: boolean;
+  port: number | null;
+  error: string | null;
+  resolvedPath: string | null;
+}
+
 export interface SentinelAPI {
   getEnginePort: () => Promise<number>;
   getEngineToken: () => Promise<string>;
+  getEngineStatus: () => Promise<EngineStatusInfo>;
   addMagnet: (uri: string, savePath?: string) => Promise<{ uri: string; savePath?: string }>;
   addTorrentFile: (b64: string, savePath?: string) => Promise<{ b64: string; savePath?: string }>;
   pauseTorrent: (hash: string) => Promise<{ hash: string }>;
