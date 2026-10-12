@@ -57,12 +57,14 @@ class SessionManager:
         return RESUME_DIR / f"{ih}.fastresume"
 
     def _save_resume(self, ih: str, handle: any) -> None:
-        """Synchronously save fast-resume data to disk."""
+        """Synchronously save fast-resume data to disk if available."""
         try:
-            if not handle.is_valid():
+            if not handle or not handle.is_valid():
                 return
-            data = lt.write_resume_data_buf(handle.save_resume_data())
-            self._resume_path(ih).write_bytes(data)
+            res = handle.save_resume_data()
+            if res is not None:
+                data = lt.write_resume_data_buf(res)
+                self._resume_path(ih).write_bytes(data)
         except Exception as exc:
             log.warning("Could not save resume for %s: %s", ih, exc)
 
@@ -214,38 +216,66 @@ def _ih_from_atp(atp: any) -> str:
 
 
 def _status_to_info(ih: str, s: any) -> TorrentInfo:
-    state = lt_state_to_enum(int(s.state), s.paused)
-    has_meta = getattr(s, "has_metadata", False)
+    try:
+        paused = getattr(s, "paused", False)
+        st_int = int(getattr(s, "state", 0))
+        state = lt_state_to_enum(st_int, paused)
+        has_meta = getattr(s, "has_metadata", False)
 
-    # When metadata is not yet downloaded from the swarm:
-    if not has_meta:
-        state = TorrentState.DOWNLOADING_METADATA
+        # When metadata is not yet downloaded from the swarm:
+        if not has_meta:
+            state = TorrentState.DOWNLOADING_METADATA
 
-    # ETA calculation (seconds)
-    if s.download_rate > 0 and s.total_wanted > 0:
-        remaining = s.total_wanted - s.total_wanted_done
-        eta = int(remaining / s.download_rate) if remaining > 0 else 0
-    else:
-        eta = -1
+        dl_rate = int(getattr(s, "download_rate", 0))
+        ul_rate = int(getattr(s, "upload_rate", 0))
+        wanted = int(getattr(s, "total_wanted", 0))
+        wanted_done = int(getattr(s, "total_wanted_done", 0))
 
-    err = s.errc.message() if s.errc.value() else None
+        # ETA calculation (seconds)
+        if dl_rate > 0 and wanted > 0:
+            remaining = wanted - wanted_done
+            eta = int(remaining / dl_rate) if remaining > 0 else 0
+        else:
+            eta = -1
 
-    # Name: if metadata is not ready yet, display helpful indicator
-    displayName = s.name if has_meta and s.name else f"Fetching metadata... ({ih[:8]})"
-    displaySize = s.total_wanted if has_meta else 0
+        err = None
+        if hasattr(s, "errc") and s.errc.value():
+            err = s.errc.message()
 
-    return TorrentInfo(
-        hash=ih,
-        name=displayName,
-        size=displaySize,
-        progress=round(float(s.progress), 6),
-        download_rate=int(s.download_rate),
-        upload_rate=int(s.upload_rate),
-        state=state,
-        peers=s.num_peers,
-        seeds=s.num_seeds,
-        eta_seconds=eta,
-        save_path=s.save_path,
-        added_at=time.time(),
-        error_message=err,
-    )
+        s_name = getattr(s, "name", "")
+        displayName = s_name if (has_meta and s_name) else f"Fetching metadata... ({ih[:8]})"
+        displaySize = wanted if has_meta else 0
+        save_path = getattr(s, "save_path", "")
+
+        return TorrentInfo(
+            hash=ih,
+            name=displayName,
+            size=displaySize,
+            progress=round(float(getattr(s, "progress", 0.0)), 6),
+            download_rate=dl_rate,
+            upload_rate=ul_rate,
+            state=state,
+            peers=int(getattr(s, "num_peers", 0)),
+            seeds=int(getattr(s, "num_seeds", 0)),
+            eta_seconds=eta,
+            save_path=save_path,
+            added_at=time.time(),
+            error_message=err,
+        )
+    except Exception as exc:
+        log.error("Failed to build TorrentInfo for %s: %s", ih, exc)
+        return TorrentInfo(
+            hash=ih,
+            name=f"Torrent ({ih[:8]})",
+            size=0,
+            progress=0.0,
+            download_rate=0,
+            upload_rate=0,
+            state=TorrentState.DOWNLOADING_METADATA,
+            peers=0,
+            seeds=0,
+            eta_seconds=-1,
+            save_path="",
+            added_at=time.time(),
+            error_message=str(exc),
+        )

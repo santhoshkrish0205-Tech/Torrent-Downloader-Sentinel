@@ -4,6 +4,7 @@ REST endpoints for torrent CRUD and control operations.
 """
 from __future__ import annotations
 import base64
+import time
 from typing import List
 
 from fastapi import APIRouter, HTTPException, BackgroundTasks
@@ -13,6 +14,7 @@ from schemas import (
     AddTorrentFileRequest,
     TorrentActionRequest,
     TorrentInfo,
+    TorrentState,
 )
 from session_manager import session_manager
 from state_store import upsert_torrent, remove_torrent as db_remove, update_torrent_state
@@ -45,11 +47,25 @@ async def add_magnet(req: AddMagnetRequest, bg: BackgroundTasks):
         magnet_uri=req.magnet_uri,
     )
 
-    info = session_manager.get_torrent_info(ih)
+    try:
+        info = session_manager.get_torrent_info(ih)
+    except Exception as exc:
+        log.error("Failed to read torrent info for %s: %s", ih, exc)
+        info = None
+
     return info or TorrentInfo(
-        hash=ih, name="", size=0, progress=0, download_rate=0,
-        upload_rate=0, state="downloading_metadata", peers=0,
-        seeds=0, eta_seconds=-1, save_path=save_path, added_at=0,
+        hash=ih,
+        name=f"Fetching metadata... ({ih[:8]})",
+        size=0,
+        progress=0.0,
+        download_rate=0,
+        upload_rate=0,
+        state=TorrentState.DOWNLOADING_METADATA,
+        peers=0,
+        seeds=0,
+        eta_seconds=-1,
+        save_path=save_path,
+        added_at=time.time(),
     )
 
 
@@ -73,11 +89,25 @@ async def add_torrent_file(req: AddTorrentFileRequest, bg: BackgroundTasks):
         torrent_data=raw,
     )
 
-    info = session_manager.get_torrent_info(ih)
+    try:
+        info = session_manager.get_torrent_info(ih)
+    except Exception as exc:
+        log.error("Failed to read torrent info for %s: %s", ih, exc)
+        info = None
+
     return info or TorrentInfo(
-        hash=ih, name="", size=0, progress=0, download_rate=0,
-        upload_rate=0, state="checking", peers=0,
-        seeds=0, eta_seconds=-1, save_path=save_path, added_at=0,
+        hash=ih,
+        name=f"Torrent ({ih[:8]})",
+        size=0,
+        progress=0.0,
+        download_rate=0,
+        upload_rate=0,
+        state=TorrentState.CHECKING,
+        peers=0,
+        seeds=0,
+        eta_seconds=-1,
+        save_path=save_path,
+        added_at=time.time(),
     )
 
 

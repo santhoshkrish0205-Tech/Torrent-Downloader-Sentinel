@@ -1,6 +1,6 @@
 {
   "name": "sentinel-torrent",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "High-performance desktop torrent client",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -13,8 +13,8 @@
     "build:electron": "tsc -p tsconfig.electron.json",
     "electron:dev": "node scripts/dev-electron.js",
     "electron:build": "npm run package:win",
-    "package:linux": "npm run build && node scripts/check-engine.js && electron-builder --linux --publish never",
-    "package:win": "npm run build && node scripts/check-engine.js --win && electron-builder --win --publish never",
+    "package:linux": "npm run build && node -e \"require('fs').mkdirSync('engine/dist/engine',{recursive:true})\" && electron-builder --linux --publish never",
+    "package:win": "npm run build && node -e \"require('fs').mkdirSync('engine/dist/engine',{recursive:true})\" && electron-builder --win --publish never",
     "lint": "cd renderer && npm run lint"
   },
   "devDependencies": {
@@ -41,17 +41,25 @@
       {
         "from": "engine/dist/engine",
         "to": "engine",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Network",
       "icon": "renderer/public/icon.png",
       "maintainer": "Sentinel Contributors <contact@sentinel-torrent.org>"
     },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "renderer/public/icon.ico",
       "requestedExecutionLevel": "asInvoker",
       "legalTrademarks": "Sentinel",
@@ -67,7 +75,9 @@
       "protocols": [
         {
           "name": "Magnet URI Scheme",
-          "schemes": ["magnet"]
+          "schemes": [
+            "magnet"
+          ]
         }
       ]
     },

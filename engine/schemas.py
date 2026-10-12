@@ -11,14 +11,15 @@ import re
 
 # ── Torrent state enum ─────────────────────────────────────────────────────────
 class TorrentState(str, Enum):
-    QUEUED            = "queued"
-    CHECKING          = "checking"
-    DOWNLOADING_META  = "downloading_metadata"
-    DOWNLOADING       = "downloading"
-    FINISHED          = "finished"
-    SEEDING           = "seeding"
-    PAUSED            = "paused"
-    ERROR             = "error"
+    QUEUED               = "queued"
+    CHECKING             = "checking"
+    DOWNLOADING_META     = "downloading_metadata"
+    DOWNLOADING_METADATA = "downloading_metadata"
+    DOWNLOADING          = "downloading"
+    FINISHED             = "finished"
+    SEEDING              = "seeding"
+    PAUSED               = "paused"
+    ERROR                = "error"
 
 
 # ── libtorrent state index → our enum ─────────────────────────────────────────
