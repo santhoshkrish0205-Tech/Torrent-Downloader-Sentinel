@@ -23,9 +23,11 @@
     "typescript": "^5.6.3",
     "wait-on": "^8.0.1"
   },
+  "author": "Sentinel Open Source Contributors",
   "build": {
     "appId": "com.sentinel.torrent",
     "productName": "Sentinel",
+    "copyright": "Copyright © 2026 Sentinel Contributors",
     "directories": {
       "output": "release"
     },
@@ -46,13 +48,38 @@
       "icon": "renderer/public/icon.png"
     },
     "win": {
-      "target": ["nsis"],
-      "icon": "renderer/public/icon.ico"
+      "target": ["nsis", "portable"],
+      "icon": "renderer/public/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "legalTrademarks": "Sentinel",
+      "fileAssociations": [
+        {
+          "ext": "torrent",
+          "name": "BitTorrent File",
+          "description": "BitTorrent Metainfo Document",
+          "mimeType": "application/x-bittorrent",
+          "role": "Viewer"
+        }
+      ],
+      "protocols": [
+        {
+          "name": "Magnet URI Scheme",
+          "schemes": ["magnet"]
+        }
+      ]
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "deleteAppDataOnUninstall": false
+      "allowElevation": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Sentinel",
+      "runAfterFinish": true,
+      "uninstallDisplayName": "Sentinel Torrent Downloader",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     }
   }
 }
