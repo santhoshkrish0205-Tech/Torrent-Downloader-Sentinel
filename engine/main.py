@@ -27,6 +27,7 @@ from logger import log
 from state_store import init_db, get_all_torrents, get_setting
 from session_manager import session_manager
 from schemas import HealthResponse
+from validators import sanitise_save_path
 
 try:
     import libtorrent as lt
@@ -59,22 +60,25 @@ async def lifespan(app: FastAPI):
 
 async def _restore_torrents() -> None:
     """Re-add all torrents saved in SQLite to the libtorrent session."""
-    rows = await get_all_torrents()
-    default_path = await get_setting("default_save_path", "")
-    for row in rows:
-        ih        = row["hash"]
-        save_path = sanitise_save_path(row["save_path"] or default_path)
-        try:
-            if row.get("torrent_data"):
-                restored_ih = await session_manager.add_torrent_file(row["torrent_data"], save_path)
-            elif row.get("magnet_uri"):
-                restored_ih = await session_manager.add_magnet(row["magnet_uri"], save_path)
-            else:
-                log.warning("No restore data for %s — skipping.", ih)
-                continue
-            log.info("Restored torrent %s", restored_ih)
-        except Exception as exc:
-            log.error("Failed to restore torrent %s: %s", ih, exc)
+    try:
+        rows = await get_all_torrents()
+        default_path = await get_setting("default_save_path", "")
+        for row in rows:
+            ih        = row["hash"]
+            save_path = sanitise_save_path(row["save_path"] or default_path)
+            try:
+                if row.get("torrent_data"):
+                    restored_ih = await session_manager.add_torrent_file(row["torrent_data"], save_path)
+                elif row.get("magnet_uri"):
+                    restored_ih = await session_manager.add_magnet(row["magnet_uri"], save_path)
+                else:
+                    log.warning("No restore data for %s — skipping.", ih)
+                    continue
+                log.info("Restored torrent %s", restored_ih)
+            except Exception as exc:
+                log.error("Failed to restore torrent %s: %s", ih, exc)
+    except Exception as exc:
+        log.error("Error during torrent restore: %s", exc)
 
 
 # ── FastAPI app ───────────────────────────────────────────────────────────────
