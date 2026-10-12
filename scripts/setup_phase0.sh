@@ -51,8 +51,8 @@ python3 -c "import libtorrent as lt; print(f'[OK]   libtorrent {lt.version} impo
 
 echo ""
 echo "[INFO] Creating Python virtual environment in .venv/ ..."
-# Use --system-site-packages so the venv can see python3-libtorrent
-python3 -m venv --system-site-packages .venv
+# Use --system-site-packages so the venv can see python3-libtorrent, and --clear to reset any broken state
+python3 -m venv --clear --system-site-packages .venv
 echo "[OK]   Virtual environment created at: .venv/"
 
 echo ""
