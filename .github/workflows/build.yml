@@ -1,0 +1,91 @@
+name: Build & Package Sentinel Desktop
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            artifact_name: sentinel-linux
+            target_cmd: npm run package:linux
+          - os: windows-latest
+            platform: windows
+            artifact_name: sentinel-windows
+            target_cmd: npm run package:win
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: "npm"
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ── Linux-specific setup ──
+      - name: Install Linux System Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y python3-libtorrent build-essential
+
+      # ── Windows-specific setup ──
+      - name: Install Windows Python Dependencies
+        if: runner.os == 'Windows'
+        run: |
+          python -m pip install --upgrade pip
+          pip install libtorrent
+          pip install -r engine/requirements.txt
+          pip install pyinstaller
+
+      - name: Install Node Dependencies
+        run: |
+          npm install --prefix renderer
+          npm install
+
+      - name: Build React Renderer & Electron Main
+        run: npm run build
+
+      # ── Build standalone engine executable ──
+      - name: Build Engine Executable (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install pyinstaller fastapi "uvicorn[standard]" aiosqlite pydantic httpx
+          pyinstaller --noconfirm --onedir --name engine engine/main.py --distpath engine/dist
+
+      - name: Build Engine Executable (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          pyinstaller --noconfirm --onedir --name engine engine/main.py --distpath engine/dist
+
+      # ── Electron Builder Packaging ──
+      - name: Package Desktop Application
+        run: ${{ matrix.target_cmd }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Upload Artifacts ──
+      - name: Upload Release Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: release/*.*
+          if-no-files-found: error

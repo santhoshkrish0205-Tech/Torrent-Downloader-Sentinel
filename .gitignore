@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+
+# PyInstaller
+engine/dist/
+engine/build/
+*.spec
+
+# Electron / Node
+node_modules/
+renderer/node_modules/
+electron/node_modules/
+out/
+release/
+dist-electron/
+
+# Vite build output
+renderer/dist/
+
+# Database and state
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# libtorrent fast-resume and session state
+*.fastresume
+*.resume
+dht_state.dat
+session.state
+
+# Logs
+logs/
+*.log
+*.log.*
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Temp / test downloads
+/tmp/
+engine/poc/downloads/
+
+# Coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# CI artifacts
+*.AppImage
+*.deb
+*.rpm
+*.tar.gz
+*.zip
