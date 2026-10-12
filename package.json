@@ -11,8 +11,8 @@
     "build": "npm run build:renderer && npm run build:electron",
     "build:renderer": "cd renderer && npm run build",
     "build:electron": "tsc -p tsconfig.electron.json",
-    "package:linux": "npm run build && electron-builder --linux",
-    "package:win": "npm run build && electron-builder --win",
+    "package:linux": "npm run build && node -e \"require('fs').mkdirSync('engine/dist/engine',{recursive:true})\" && electron-builder --linux",
+    "package:win": "npm run build && node -e \"require('fs').mkdirSync('engine/dist/engine',{recursive:true})\" && electron-builder --win",
     "lint": "cd renderer && npm run lint"
   },
   "devDependencies": {
@@ -23,7 +23,7 @@
     "typescript": "^5.6.3",
     "wait-on": "^8.0.1"
   },
-  "author": "Sentinel Open Source Contributors",
+  "author": "Sentinel Contributors <contact@sentinel-torrent.org>",
   "build": {
     "appId": "com.sentinel.torrent",
     "productName": "Sentinel",
@@ -37,15 +37,16 @@
     ],
     "extraResources": [
       {
-        "from": "engine/dist/",
-        "to": "engine/",
+        "from": "engine/dist/engine",
+        "to": "engine",
         "filter": ["**/*"]
       }
     ],
     "linux": {
       "target": ["AppImage", "deb"],
       "category": "Network",
-      "icon": "renderer/public/icon.png"
+      "icon": "renderer/public/icon.png",
+      "maintainer": "Sentinel Contributors <contact@sentinel-torrent.org>"
     },
     "win": {
       "target": ["nsis", "portable"],

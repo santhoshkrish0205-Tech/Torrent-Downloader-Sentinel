@@ -68,13 +68,15 @@ jobs:
       - name: Build Engine Executable (Linux)
         if: runner.os == 'Linux'
         run: |
-          python3 -m pip install pyinstaller fastapi "uvicorn[standard]" aiosqlite pydantic httpx
-          pyinstaller --noconfirm --onedir --name engine engine/main.py --distpath engine/dist
+          python3 -m pip install pyinstaller fastapi "uvicorn[standard]" aiosqlite pydantic httpx websockets
+          pyinstaller --noconfirm --onedir --name engine --paths engine --collect-all fastapi --collect-all uvicorn --collect-all aiosqlite --collect-all websockets engine/main.py --distpath engine/dist
+          ls -la engine/dist/engine
 
       - name: Build Engine Executable (Windows)
         if: runner.os == 'Windows'
         run: |
-          pyinstaller --noconfirm --onedir --name engine engine/main.py --distpath engine/dist
+          pyinstaller --noconfirm --onedir --name engine --paths engine --collect-all libtorrent --collect-all fastapi --collect-all uvicorn --collect-all aiosqlite --collect-all websockets engine/main.py --distpath engine/dist
+          Get-ChildItem -Path engine/dist/engine
 
       # ── Electron Builder Packaging ──
       - name: Package Desktop Application

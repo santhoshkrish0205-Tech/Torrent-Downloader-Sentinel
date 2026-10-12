@@ -20,7 +20,7 @@ let portReject: ((err: Error) => void) | null = null;
 
 const portPromise = new Promise<number>((resolve, reject) => {
   portResolve = resolve;
-  portReject   = reject;
+  portReject = reject;
 });
 
 export function getEnginePort(): Promise<number> {
@@ -28,50 +28,76 @@ export function getEnginePort(): Promise<number> {
 }
 
 export function startEngine(): void {
-  const { cmd, args, opts } = resolveEngineCommand();
+  const resolved = resolveEngineCommand();
+  if (!resolved) {
+    const errMsg = "[EngineManager] Torrent engine executable not found. Running in UI preview mode.";
+    console.warn(errMsg);
+    if (portReject) {
+      portReject(new Error(errMsg));
+    }
+    return;
+  }
 
+  const { cmd, args, opts } = resolved;
   console.log("[EngineManager] Starting engine:", cmd, args.join(" "));
 
-  engineProcess = spawn(cmd, args, {
-    ...opts,
-    env: {
-      ...process.env,
-      SENTINEL_ENGINE_TOKEN: ENGINE_TOKEN,
-      SENTINEL_APP_DATA: app.getPath("userData"),
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  try {
+    engineProcess = spawn(cmd, args, {
+      ...opts,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        SENTINEL_ENGINE_TOKEN: ENGINE_TOKEN,
+        SENTINEL_APP_DATA: app.getPath("userData"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
-  // Read port from stdout
-  engineProcess.stdout!.on("data", (chunk: Buffer) => {
-    const text = chunk.toString();
-    const match = text.match(/SENTINEL_ENGINE_PORT:(\d+)/);
-    if (match && portResolve) {
-      enginePort = parseInt(match[1], 10);
-      console.log("[EngineManager] Engine port discovered:", enginePort);
-      portResolve(enginePort);
-    }
-    if (isDev) process.stdout.write(`[ENGINE] ${text}`);
-  });
+    // Handle spawn-level failures (e.g. ENOENT, EACCES) to prevent uncaught main process crashes
+    engineProcess.on("error", (err) => {
+      console.error("[EngineManager] Subprocess spawn error:", err.message);
+      engineProcess = null;
+      if (portReject && enginePort === null) {
+        portReject(err);
+      }
+    });
 
-  engineProcess.stderr!.on("data", (chunk: Buffer) => {
-    if (isDev) process.stderr.write(`[ENGINE ERR] ${chunk.toString()}`);
-  });
+    // Read port from stdout
+    engineProcess.stdout?.on("data", (chunk: Buffer) => {
+      const text = chunk.toString();
+      const match = text.match(/SENTINEL_ENGINE_PORT:(\d+)/);
+      if (match && portResolve) {
+        enginePort = parseInt(match[1], 10);
+        console.log("[EngineManager] Engine port discovered:", enginePort);
+        portResolve(enginePort);
+      }
+      if (isDev) process.stdout.write(`[ENGINE] ${text}`);
+    });
 
-  engineProcess.on("exit", (code, signal) => {
-    console.warn("[EngineManager] Engine exited:", code, signal);
-    engineProcess = null;
+    engineProcess.stderr?.on("data", (chunk: Buffer) => {
+      if (isDev) process.stderr.write(`[ENGINE ERR] ${chunk.toString()}`);
+    });
+
+    engineProcess.on("exit", (code, signal) => {
+      console.warn("[EngineManager] Engine exited:", code, signal);
+      engineProcess = null;
+      if (portReject && enginePort === null) {
+        portReject(new Error(`Engine exited before reporting port (code=${code})`));
+      }
+    });
+
+    // Timeout if engine never reports port
+    setTimeout(() => {
+      if (enginePort === null && portReject) {
+        portReject(new Error("Engine port discovery timed out after 15s"));
+      }
+    }, 15_000);
+  } catch (err: any) {
+    console.error("[EngineManager] Unexpected exception while spawning engine:", err);
     if (portReject && enginePort === null) {
-      portReject(new Error(`Engine exited before reporting port (code=${code})`));
+      portReject(err);
     }
-  });
-
-  // Timeout if engine never reports port
-  setTimeout(() => {
-    if (enginePort === null && portReject) {
-      portReject(new Error("Engine port timeout after 15s"));
-    }
-  }, 15_000);
+  }
 }
 
 export function stopEngine(): void {
@@ -82,11 +108,11 @@ export function stopEngine(): void {
   }
 }
 
-function resolveEngineCommand(): { cmd: string; args: string[]; opts: object } {
+function resolveEngineCommand(): { cmd: string; args: string[]; opts: object } | null {
   if (isDev) {
     // Dev: check project .venv on Linux and Windows, else system python
     const venvPyLinux = path.join(app.getAppPath(), ".venv", "bin", "python3");
-    const venvPyWin   = path.join(app.getAppPath(), ".venv", "Scripts", "python.exe");
+    const venvPyWin = path.join(app.getAppPath(), ".venv", "Scripts", "python.exe");
     let py = "python3";
     if (fs.existsSync(venvPyLinux)) {
       py = venvPyLinux;
@@ -104,10 +130,27 @@ function resolveEngineCommand(): { cmd: string; args: string[]; opts: object } {
 
   // Production: bundled PyInstaller executable
   const exeName = process.platform === "win32" ? "engine.exe" : "engine";
-  const exePath = path.join(process.resourcesPath, "engine", exeName);
-  return {
-    cmd: exePath,
-    args: [],
-    opts: {},
-  };
+
+  // Check multiple candidate locations across packaging variations
+  const candidatePaths = [
+    path.join(process.resourcesPath, "engine", exeName),
+    path.join(process.resourcesPath, "engine", "engine", exeName),
+    path.join(process.resourcesPath, exeName),
+    path.join(app.getAppPath(), "engine", "dist", "engine", exeName),
+    path.join(app.getAppPath(), "engine", "dist", exeName),
+  ];
+
+  for (const candidate of candidatePaths) {
+    if (fs.existsSync(candidate)) {
+      console.log(`[EngineManager] Resolved engine binary at: ${candidate}`);
+      return {
+        cmd: candidate,
+        args: [],
+        opts: { cwd: path.dirname(candidate) },
+      };
+    }
+  }
+
+  console.warn(`[EngineManager] Engine binary not found in any standard path:`, candidatePaths);
+  return null;
 }
