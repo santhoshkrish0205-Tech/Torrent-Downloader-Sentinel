@@ -1,6 +1,6 @@
 """
 engine/session_manager.py
-Singleton libtorrent session.  All interaction with libtorrent happens here.
+Singleton libtorrent session. All interaction with libtorrent happens here.
 """
 from __future__ import annotations
 import asyncio
@@ -24,7 +24,6 @@ class SessionManager:
     def __init__(self) -> None:
         self._session = None
         self._handles: Dict[str, any] = {}   # hash → handle
-        self._mock_torrents: Dict[str, TorrentInfo] = {}
         self._lock = asyncio.Lock()
 
     # ── Lifecycle ────────────────────────────────────────────────────────────
@@ -38,7 +37,7 @@ class SessionManager:
         else:
             log.warning(
                 "libtorrent library not found on system. "
-                "Running in fallback preview mode. Install python3-libtorrent for native transfers."
+                "Install python3-libtorrent or libtorrent wheel for native transfers."
             )
 
     def stop(self) -> None:
@@ -57,7 +56,7 @@ class SessionManager:
     def _resume_path(self, ih: str) -> Path:
         return RESUME_DIR / f"{ih}.fastresume"
 
-    def _save_resume(self, ih: str, handle: lt.torrent_handle) -> None:
+    def _save_resume(self, ih: str, handle: any) -> None:
         """Synchronously save fast-resume data to disk."""
         try:
             if not handle.is_valid():
@@ -81,72 +80,44 @@ class SessionManager:
     async def add_magnet(self, magnet_uri: str, save_path: str) -> str:
         """Add a magnet link; returns info-hash string."""
         async with self._lock:
-            if self._session:
-                atp = lt.parse_magnet_uri(magnet_uri)
-                atp.save_path = save_path
-                resume = self._load_resume(_ih_from_atp(atp))
-                if resume:
+            if not self._session:
+                raise RuntimeError("Torrent engine is not initialized. libtorrent is required.")
+
+            atp = lt.parse_magnet_uri(magnet_uri)
+            atp.save_path = save_path
+            ih = _ih_from_atp(atp)
+            resume = self._load_resume(ih)
+            if resume:
+                try:
                     lt.read_resume_data(resume, atp)
-                handle = self._session.add_torrent(atp)
-                ih = str(handle.info_hashes().v1 or handle.info_hashes().v2)
-                self._handles[ih] = handle
-                log.info("Added magnet: %s (ih=%s)", magnet_uri[:60], ih)
-                return ih
-            else:
-                import hashlib
-                ih = hashlib.sha1(magnet_uri.encode()).hexdigest()
-                self._mock_torrents[ih] = TorrentInfo(
-                    hash=ih,
-                    name=magnet_uri.split("&dn=")[-1].split("&")[0] if "&dn=" in magnet_uri else f"Torrent-{ih[:8]}",
-                    size=2147483648,
-                    progress=0.05,
-                    download_rate=24500000,
-                    upload_rate=1200000,
-                    state=TorrentState.DOWNLOADING,
-                    peers=54,
-                    seeds=120,
-                    eta_seconds=84,
-                    save_path=save_path,
-                    added_at=time.time(),
-                )
-                log.info("Added magnet in simulation mode (ih=%s)", ih)
-                return ih
+                except Exception as e:
+                    log.warning("Failed to apply resume data for %s: %s", ih, e)
+            handle = self._session.add_torrent(atp)
+            self._handles[ih] = handle
+            log.info("Added magnet to libtorrent swarm: %s (ih=%s)", magnet_uri[:60], ih)
+            return ih
 
     async def add_torrent_file(self, data: bytes, save_path: str) -> str:
         """Add from raw .torrent bytes; returns info-hash string."""
         async with self._lock:
-            if self._session:
-                ti = lt.torrent_info(data)
-                atp = lt.add_torrent_params()
-                atp.ti = ti
-                atp.save_path = save_path
-                ih = str(ti.info_hashes().v1 or ti.info_hashes().v2)
-                resume = self._load_resume(ih)
-                if resume:
+            if not self._session:
+                raise RuntimeError("Torrent engine is not initialized. libtorrent is required.")
+
+            ti = lt.torrent_info(data)
+            atp = lt.add_torrent_params()
+            atp.ti = ti
+            atp.save_path = save_path
+            ih = str(ti.info_hashes().v1 or ti.info_hashes().v2)
+            resume = self._load_resume(ih)
+            if resume:
+                try:
                     lt.read_resume_data(resume, atp)
-                handle = self._session.add_torrent(atp)
-                self._handles[ih] = handle
-                log.info("Added .torrent file (ih=%s)", ih)
-                return ih
-            else:
-                import hashlib
-                ih = hashlib.sha1(data[:100]).hexdigest()
-                self._mock_torrents[ih] = TorrentInfo(
-                    hash=ih,
-                    name=f"Torrent-File-{ih[:8]}",
-                    size=1073741824,
-                    progress=0.1,
-                    download_rate=18000000,
-                    upload_rate=900000,
-                    state=TorrentState.DOWNLOADING,
-                    peers=32,
-                    seeds=88,
-                    eta_seconds=50,
-                    save_path=save_path,
-                    added_at=time.time(),
-                )
-                log.info("Added .torrent file in simulation mode (ih=%s)", ih)
-                return ih
+                except Exception as e:
+                    log.warning("Failed to apply resume data for %s: %s", ih, e)
+            handle = self._session.add_torrent(atp)
+            self._handles[ih] = handle
+            log.info("Added .torrent file to libtorrent swarm (ih=%s)", ih)
+            return ih
 
     async def pause(self, ih: str) -> None:
         async with self._lock:
@@ -154,26 +125,12 @@ class SessionManager:
                 if h := self._handles.get(ih):
                     h.pause()
                     self._save_resume(ih, h)
-            elif ih in self._mock_torrents:
-                t = self._mock_torrents[ih]
-                self._mock_torrents[ih] = t.model_copy(update={
-                    "state": TorrentState.PAUSED,
-                    "download_rate": 0,
-                    "upload_rate": 0
-                })
 
     async def resume(self, ih: str) -> None:
         async with self._lock:
             if self._session:
                 if h := self._handles.get(ih):
                     h.resume()
-            elif ih in self._mock_torrents:
-                t = self._mock_torrents[ih]
-                self._mock_torrents[ih] = t.model_copy(update={
-                    "state": TorrentState.DOWNLOADING,
-                    "download_rate": 20000000,
-                    "upload_rate": 1000000
-                })
 
     async def remove(self, ih: str, delete_files: bool = False) -> None:
         async with self._lock:
@@ -186,9 +143,6 @@ class SessionManager:
                     if resume_path.exists():
                         resume_path.unlink(missing_ok=True)
                     log.info("Removed torrent %s (delete_files=%s)", ih, delete_files)
-            elif ih in self._mock_torrents:
-                del self._mock_torrents[ih]
-                log.info("Removed torrent %s from simulation mode", ih)
 
     # ── Status queries ────────────────────────────────────────────────────────
 
@@ -198,7 +152,7 @@ class SessionManager:
             if not h or not h.is_valid():
                 return None
             return _status_to_info(ih, h.status())
-        return self._mock_torrents.get(ih)
+        return None
 
     def get_all_torrent_info(self) -> List[TorrentInfo]:
         if self._session:
@@ -208,7 +162,7 @@ class SessionManager:
                 if h.is_valid():
                     result.append(_status_to_info(ih, h.status()))
             return result
-        return list(self._mock_torrents.values())
+        return []
 
     def get_session_stats(self) -> SessionStats:
         if self._session:
@@ -222,22 +176,20 @@ class SessionManager:
             )
             dl = sum(h.status().download_rate for h in handles)
             ul = sum(h.status().upload_rate for h in handles)
+            dht = self._session.status().dht_nodes
             return SessionStats(
                 total_download_rate=int(dl),
                 total_upload_rate=int(ul),
-                dht_nodes=self._session.status().dht_nodes,
+                dht_nodes=dht,
                 active_torrents=active,
                 total_torrents=len(handles),
             )
-        total_dl = sum(t.download_rate for t in self._mock_torrents.values())
-        total_ul = sum(t.upload_rate for t in self._mock_torrents.values())
-        active = sum(1 for t in self._mock_torrents.values() if t.state == TorrentState.DOWNLOADING)
         return SessionStats(
-            total_download_rate=int(total_dl),
-            total_upload_rate=int(total_ul),
-            dht_nodes=350,
-            active_torrents=active,
-            total_torrents=len(self._mock_torrents),
+            total_download_rate=0,
+            total_upload_rate=0,
+            dht_nodes=0,
+            active_torrents=0,
+            total_torrents=0,
         )
 
     def restore_handle(self, ih: str, handle: any) -> None:
@@ -255,12 +207,19 @@ session_manager = SessionManager()
 
 # ── Private helpers ────────────────────────────────────────────────────────────
 def _ih_from_atp(atp: any) -> str:
-    h = atp.info_hashes
-    return str(h.v1 or h.v2) if h else ""
+    h = getattr(atp, "info_hashes", None)
+    if h:
+        return str(h.v1 or h.v2)
+    return ""
 
 
 def _status_to_info(ih: str, s: any) -> TorrentInfo:
     state = lt_state_to_enum(int(s.state), s.paused)
+    has_meta = getattr(s, "has_metadata", False)
+
+    # When metadata is not yet downloaded from the swarm:
+    if not has_meta:
+        state = TorrentState.DOWNLOADING_METADATA
 
     # ETA calculation (seconds)
     if s.download_rate > 0 and s.total_wanted > 0:
@@ -271,10 +230,14 @@ def _status_to_info(ih: str, s: any) -> TorrentInfo:
 
     err = s.errc.message() if s.errc.value() else None
 
+    # Name: if metadata is not ready yet, display helpful indicator
+    displayName = s.name if has_meta and s.name else f"Fetching metadata... ({ih[:8]})"
+    displaySize = s.total_wanted if has_meta else 0
+
     return TorrentInfo(
         hash=ih,
-        name=s.name or ih[:8],
-        size=s.total_wanted or 0,
+        name=displayName,
+        size=displaySize,
         progress=round(float(s.progress), 6),
         download_rate=int(s.download_rate),
         upload_rate=int(s.upload_rate),
