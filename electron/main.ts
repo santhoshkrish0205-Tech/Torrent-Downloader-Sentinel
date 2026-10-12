@@ -42,9 +42,20 @@ function createWindow(): void {
     mainWindow.loadFile(path.join(__dirname, "../renderer/dist/index.html"));
   }
 
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription) => {
+    console.error(`[Electron] Failed to load renderer: ${errorCode} ${errorDescription}`);
+  });
+
   mainWindow.once("ready-to-show", () => {
     mainWindow!.show();
   });
+
+  // Fallback to ensure window is visible even on slower display drivers
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 2000);
 
   mainWindow.on("closed", () => {
     mainWindow = null;
